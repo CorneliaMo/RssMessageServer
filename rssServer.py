@@ -1,6 +1,6 @@
 """
 Since I use nginx to relay http requests, the headers include "X-Real-Ip" indicates the real source.
-If you directly access the http api or "X-Real-Ip" is no included in the headers,
+If you directly access the http api or "X-Real-Ip" is not included in the headers,
     please modify the debug messages at the beginning of each function or disable them.
 Otherwise, script will throw exception because loading specific header failed.
 
