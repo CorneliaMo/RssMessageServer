@@ -1,12 +1,11 @@
 """
-Since I use nginx to relay http requests, the headers include "X-Real-Ip" indicates the real source.
-If you directly access the http api or "X-Real-Ip" is not included in the headers,
+Since I use nginx to relay HTTP requests, the headers include "X-Real-Ip" to indicate the real source.
+If you directly access the HTTP API or "X-Real-Ip" is not included in the headers,
     please modify the debug messages at the beginning of each function or disable them.
-Otherwise, script will throw exception because loading specific header failed.
+Otherwise, the script will throw an exception because loading the specific header failed.
 
 CorneliaMo, 2024-11-5
 """
-
 from flask import Flask, send_file, request, abort
 from json import loads, dumps
 from xmlGenerator import genXML
