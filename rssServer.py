@@ -1,6 +1,14 @@
+"""
+Since I use nginx to relay http requests, the headers include "X-Real-Ip" indicates the real source.
+If you directly access the http api or "X-Real-Ip" is no included in the headers,
+    please modify the debug messages at the beginning of each function or disable them.
+Otherwise, script will throw exception because loading specific header failed.
+
+CorneliaMo, 2024-11-5
+"""
+
 from flask import Flask, send_file, request, abort
 from json import loads, dumps
-from random import randint
 from xmlGenerator import genXML
 from os.path import exists
 from waitress import serve
@@ -10,8 +18,9 @@ app = Flask(__name__)
 
 
 @app.route("/<int:channelId>/<int:itemId>")
+# Page for single message
 def rssItem(channelId, itemId):
-    print(strftime("%Y-%m-%d %H:%M:%S", localtime())+"  "+request.headers.get("X-Real-Ip")+" get page")
+    print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " get page")
     with open('rss.json', mode='r') as f:
         rssJson = loads(f.readline())
     for channel in rssJson["channel"]:
@@ -19,10 +28,11 @@ def rssItem(channelId, itemId):
             for item in channel["item"]:
                 if item["id"] == itemId:
                     return item["description"]
-    abort(404)
+    return "Message not found", 404
 
 
 @app.route("/<int:channelId>")
+# Page for single channel
 def rssChannel(channelId):
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " get page")
     with open('rss.json', mode='r') as f:
@@ -30,10 +40,11 @@ def rssChannel(channelId):
     for channel in rssJson["channel"]:
         if channel["id"] == channelId:
             return channel["description"]
-    abort(404)
+    return "Channel not found", 404
 
 
 @app.route("/")
+# Return the xml file for rss
 def rssSubscribe():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " update rss")
     if not exists('rss.xml'):
@@ -42,20 +53,24 @@ def rssSubscribe():
 
 
 @app.route("/addChannel", methods=["POST"])
+# POST {"title": titleString, "description": descriptionString}
+# Provide title and description to create a new channel
+# Return id for the new channel
+# Return {"id": newChannelId}
 def addChannel():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " add channel")
     postJson = loads(request.get_data())
+    if "title" not in postJson or "description" not in postJson:
+        return "check if title and description are submitted", 500
     with open('rss.json', mode='r') as f:
         rssJson = loads(f.readline())
-    channelId = len(rssJson["channel"])+1
+    channelId = 1 if len(rssJson["channel"]) == 0 else rssJson["channel"][-1]["id"]+1
     newChannel = {}
-    if "title" not in postJson or "description" not in postJson:
-        abort(500)
     for element in postJson.items():
         newChannel[element[0]] = element[1]
     newChannel["id"] = channelId
     newChannel["item"] = []
-    newChannel["link"] = "https://server.corneliamo.cn:10100/rss/"+str(channelId)
+    newChannel["link"] = "https://server.corneliamo.cn:10100/rss/" + str(channelId)
     rssJson["channel"].append(newChannel)
     with open('rss.json', mode='w') as f:
         f.write(dumps(rssJson))
@@ -64,19 +79,23 @@ def addChannel():
 
 
 @app.route("/addMessage", methods=["POST"])
+# POST {"id": existChannelId, "title": messageTitle, "description": message}
+# Provide an exist channel id, title and description to publish a new message
+# Return id for the new message
+# Return {"id": newMessageId}
 def addMessage():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " add message")
     postJson = loads(request.get_data())
     if "title" not in postJson or "description" not in postJson or "id" not in postJson:
-        abort(500)
-    with open("rss.json", mode='r') as f:
-        rssJson = loads(f.readline())
+        return "check if title, description and id are submitted", 500
     channelId = postJson["id"]
     if not isinstance(channelId, int):
         return "id should be int", 500
+    with open("rss.json", mode='r') as f:
+        rssJson = loads(f.readline())
     for i in range(len(rssJson["channel"])):
         if rssJson["channel"][i]["id"] == channelId:
-            messageId = len(rssJson["channel"][i]["item"])+1
+            messageId = 1 if len(rssJson["channel"][i]["item"]) == 0 else rssJson["channel"][i]["item"][-1]["id"] + 1
             newItem = {}
             for element in postJson.items():
                 newItem[element[0]] = element[1]
@@ -91,11 +110,14 @@ def addMessage():
 
 
 @app.route("/modifyChannel", methods=["POST"])
+# POST {"id": existChannelId, ...kwargs}
+# Provide an exist channel id and cover channel properties using kwargs (except id, item, and link)
+# Return 200 if success
 def modifyChannel():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " modify channel")
     postJson = loads(request.get_data())
     if "id" not in postJson:
-        abort(500)
+        return "check if id is submitted"
     channelId = postJson["id"]
     if not isinstance(channelId, int):
         return "id should be int", 500
@@ -108,11 +130,15 @@ def modifyChannel():
                     rssJson["channel"][i][element[0]] = element[1]
             with open('rss.json', mode='w') as f:
                 f.write(dumps(rssJson))
+            genXML()
             abort(200)
     abort(500)
 
 
 @app.route("/modifyMessage", methods=["POST"])
+# POST {"channelId": existChannelId, "messageId": existMessageId, ...kwargs}
+# Provide exist channel id and exist message id, cover message properties using kwargs (except id and link)
+# Return 200 if success
 def modifyMessage():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " modify message")
     postJson = loads(request.get_data())
@@ -124,18 +150,24 @@ def modifyMessage():
         return "channelId and messageId should be int", 500
     with open("rss.json", mode='r') as f:
         rssJson = loads(f.readline())
-    if channelId<=len(rssJson["channel"]):
-            if messageId<=len(rssJson["channel"][channelId-1]["item"]):
-                for element in postJson.items():
-                    if element[0] != "channelId" and element[0] != "messageId" and element[0] != "id" and element[0] != "link":
-                        rssJson["channel"][channelId-1]["item"][messageId-1][element[0]] = element[1]
-                with open('rss.json', mode='w') as f:
-                    f.write(dumps(rssJson))
+    for channelQuery in range(len(rssJson["channel"])):
+        if channelId == rssJson["channel"][channelQuery]["id"]:
+            for itemQuery in range(rssJson["channel"][channelQuery]["item"]):
+                if messageId == rssJson["channel"][channelQuery]["item"][itemQuery]["id"]:
+                    for element in postJson.items():
+                        if element[0] != "channelId" and element[0] != "messageId" and element[0] != "id" and element[0] != "link":
+                            rssJson["channel"][channelQuery]["item"][itemQuery][element[0]] = element[1]
+                    with open('rss.json', mode='w') as f:
+                        f.write(dumps(rssJson))
+                    genXML()
                     abort(200)
     abort(500)
 
 
 @app.route("/deleteChannel", methods=["POST"])
+# POST {"id": existChannelId}
+# Provide an exist channel id, delete the corresponding channel include its messages
+# Return 200 if success
 def deleteChannel():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " delete channel")
     postJson = loads(request.get_data())
@@ -146,17 +178,20 @@ def deleteChannel():
         return "id should be int", 500
     with open('rss.json', mode='r') as f:
         rssJson = loads(f.readline())
-    if id<=len(rssJson["channel"]):
-        del rssJson["channel"][channelId-1]
-        for i in range(channelId-1, len(rssJson["channel"])):
-            rssJson["channel"][i]["id"] = rssJson["channel"][i]["id"]-1
-        with open('rss.json', mode='w') as f:
-            f.write(dumps(rssJson))
+    for channelQuery in range(len(rssJson["channel"])):
+        if channelId == rssJson["channel"][channelQuery]["id"]:
+            del rssJson["channel"][channelQuery]
+            with open('rss.json', mode='w') as f:
+                f.write(dumps(rssJson))
+            genXML()
             abort(200)
     abort(500)
 
 
 @app.route("/deleteMessage", methods=["POST"])
+# POST {"channelId": existChannelId, "messageId": existMessageId}
+# Provide exist channel id and exist message id, delete the corresponding message
+# Return 200 if success
 def deleteMessage():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " delete message")
     postJson = loads(request.get_data())
@@ -168,23 +203,27 @@ def deleteMessage():
         return "channelId and messageId should be int", 500
     with open('rss.json', mode='r') as f:
         rssJson = loads(f.readline())
-    if channelId<=len(rssJson["channel"]):
-        if messageId<=len(rssJson["channel"][channelId]["item"]):
-            del rssJson["channel"][channelId-1]["item"][messageId]
-            for i in range(messageId-1, len(rssJson["channel"][channelId]["item"])):
-                rssJson["channel"][channelId-1]["item"][i]["id"] = rssJson["channel"][channelId-1]["item"][i]["id"] - 1
-            with open('rss.json', mode='w') as f:
-                f.write(dumps(rssJson))
-                abort(200)
+    for channelQuery in range(len(rssJson["channel"])):
+        if channelId == rssJson["channel"][channelQuery]["id"]:
+            for messageQuery in range(len(rssJson["channel"][channelQuery]["item"])):
+                if messageId == rssJson["channel"][channelQuery]["item"][messageQuery]["id"]:
+                    del rssJson["channel"][channelQuery]["item"][messageQuery]
+                    with open('rss.json', mode='w') as f:
+                        f.write(dumps(rssJson))
+                    genXML()
+                    abort(200)
     abort(500)
 
 
 @app.route("/getMessageList", methods=["POST"])
+# POST {"id": existChannelId}
+# Provide an exist channel id, return a list for messages in the channel
+# Return all json data of messages, code 500 if query fail
 def getMessageList():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " get message list")
     postJson = loads(request.get_data())
     if "id" not in postJson:
-        abort(500)
+        return "Check if id is submitted", 500
     channelId = postJson["id"]
     if not isinstance(channelId, int):
         return "id should be int", 500
@@ -197,18 +236,22 @@ def getMessageList():
 
 
 @app.route("/getChannelList")
+# Directly access
+# Return all json data of channels except "item" data
 def getChannelList():
     print(strftime("%Y-%m-%d %H:%M:%S", localtime()) + "  " + request.headers.get("X-Real-Ip") + " get channel list")
     with open('rss.json', mode='r') as f:
         rssJson = loads(f.readline())
     channelList = []
     for channel in rssJson["channel"]:
+        # avoid to return tedious information
         del channel["item"]
         channelList.append(channel)
     return channelList
 
 
 if __name__ == "__main__":
+    # Initialize the json file to store channels and messages
     if not exists("rss.json"):
         with open('rss.json', 'w') as f:
             f.write("{\"channel\": []}")

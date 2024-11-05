@@ -1,20 +1,24 @@
 """
-{"channels":
-    [
-        {
-            "title":"Channel title",
-            "link":"",
-            "description":"Channel description",
-            "items":
-                [
-                    {
-                        "title":"Item title",
-                        "link":"Item link",
-                        "description":"Item description"
-                    }
-                ]
-        }
-    ]
+Json data pattern
+{
+    "channel":
+        [
+            {
+                "title": "Channel title",
+                "link": "",
+                "description": "Channel description",
+                ...other tags,
+                "item":
+                    [
+                        {
+                            "title": "Item title",
+                            "link": "Item link",
+                            "description": "Item description",
+                            ...other tags
+                        }
+                    ]
+            }
+        ]
 }
 """
 from json import loads
@@ -40,7 +44,6 @@ def addDict(elementsDict: dict, lines: list, indent: int):
 def genXML():
     with open("rss.json", mode='r') as JsonFile:
         rss = loads(JsonFile.readline())
-
     with open("rss.xml", mode='w') as xmlFile:
         lines = ["<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n", "<rss version=\"2.0\">\n"]
         addDict(rss, lines, 1)
