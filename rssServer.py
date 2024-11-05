@@ -13,6 +13,7 @@ from os.path import exists
 from waitress import serve
 from time import localtime, strftime
 
+Port = 5002
 app = Flask(__name__)
 
 
@@ -255,4 +256,4 @@ if __name__ == "__main__":
         with open('rss.json', 'w') as f:
             f.write("{\"channel\": []}")
     print("server start")
-    serve(app, host='127.0.0.1', port=5002)
+    serve(app, host='127.0.0.1', port=Port)
